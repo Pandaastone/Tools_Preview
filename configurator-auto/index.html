@@ -1535,6 +1535,10 @@
         // ==========================================
         // 拖拽与本地文件夹读取引擎 (支持拖拽整个文件夹、多层子目录及单图混合)
         // ==========================================
+        function isChineseUI() {
+            return document.documentElement.lang.toLowerCase().startsWith('zh');
+        }
+
         async function handleGlobalDrop(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -1549,7 +1553,7 @@
             const dropTitle = dropzoneBox ? dropzoneBox.querySelector('h2') : null;
             const originalTitle = dropTitle ? dropTitle.innerText : '';
             if (dropTitle && !isAlreadyActive) {
-                dropTitle.innerText = currentLang === 'zh' ? '正在扫描并解析图片素材...' : 'Scanning files...';
+                dropTitle.innerText = isChineseUI() ? '正在扫描并解析图片素材...' : 'Scanning files...';
             }
 
             let files = [];
@@ -1566,7 +1570,7 @@
             if (files && files.length > 0) {
                 handleFiles(files, isAlreadyActive);
             } else {
-                showToast(currentLang === 'zh' ? '未能在拖入的文件中识别到有效图片' : 'No valid car rendering files recognized.');
+                showToast(isChineseUI() ? '未能在拖入的文件中识别到有效图片' : 'No valid car rendering files recognized.');
             }
         }
 
@@ -1770,7 +1774,7 @@
 
             const modelKeys = Object.keys(models);
             if (modelKeys.length === 0) {
-                showToast(currentLang === 'zh' ? '未能在拖入的内容中识别到有效图片素材' : 'No valid car rendering files recognized.');
+                showToast(isChineseUI() ? '未能在拖入的内容中识别到有效图片素材' : 'No valid car rendering files recognized.');
                 return;
             }
 
