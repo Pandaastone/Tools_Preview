@@ -749,6 +749,9 @@
         .dropzone-box:active {
             transform: translateY(-3px) scale(0.99);
         }
+        .dropzone-box * {
+            pointer-events: none;
+        }
 
         @keyframes configStageEnter {
             from {
@@ -1410,8 +1413,15 @@
         function parseCarFilename(filename) {
             const dotIdx = filename.lastIndexOf('.');
             const baseName = dotIdx !== -1 ? filename.substring(0, dotIdx) : filename;
-            const rawTokens = baseName.split('_');
-            if (rawTokens.length < 2) return null;
+
+            // 优先按下划线 _ 分割，若无下划线则尝试连字符 - 或空格 分割
+            let rawTokens = baseName.split('_');
+            if (rawTokens.length < 2 && baseName.includes('-')) {
+                rawTokens = baseName.split('-');
+            } else if (rawTokens.length < 2 && baseName.includes(' ')) {
+                rawTokens = baseName.split(' ');
+            }
+            if (rawTokens.length === 0) rawTokens = [baseName];
 
             let tokens = [...rawTokens];
             let view = null;
@@ -1525,15 +1535,7 @@
         // ==========================================
         // 拖拽与本地文件夹读取引擎 (支持拖拽整个文件夹、多层子目录及单图混合)
         // ==========================================
-        window.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-        });
-        window.addEventListener('dragenter', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-        });
-        window.addEventListener('drop', async (e) => {
+        async function handleGlobalDrop(e) {
             e.preventDefault();
             e.stopPropagation();
             if (dropzoneBox) dropzoneBox.classList.remove('dragover');
@@ -1547,14 +1549,14 @@
             const dropTitle = dropzoneBox ? dropzoneBox.querySelector('h2') : null;
             const originalTitle = dropTitle ? dropTitle.innerText : '';
             if (dropTitle && !isAlreadyActive) {
-                dropTitle.innerText = currentLang === 'zh' ? '正在扫描并解析文件夹...' : 'Scanning folder...';
+                dropTitle.innerText = currentLang === 'zh' ? '正在扫描并解析图片素材...' : 'Scanning files...';
             }
 
             let files = [];
             try {
                 files = await getFilesFromDataTransfer(dt);
             } catch (err) {
-                console.error('Error reading dropped folder:', err);
+                console.error('Error reading dropped files:', err);
             }
 
             if (dropTitle && !isAlreadyActive) {
@@ -1564,9 +1566,19 @@
             if (files && files.length > 0) {
                 handleFiles(files, isAlreadyActive);
             } else {
-                showToast(currentLang === 'zh' ? '未能在该文件夹中识别到有效图片' : 'No valid car rendering files recognized.');
+                showToast(currentLang === 'zh' ? '未能在拖入的文件中识别到有效图片' : 'No valid car rendering files recognized.');
             }
+        }
+
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
         });
+        window.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        window.addEventListener('drop', handleGlobalDrop);
 
         if (dropzoneBox) {
             dropzoneBox.addEventListener('dragover', (e) => {
@@ -1584,11 +1596,7 @@
                 e.stopPropagation();
                 dropzoneBox.classList.remove('dragover');
             });
-            dropzoneBox.addEventListener('drop', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                dropzoneBox.classList.remove('dragover');
-            });
+            dropzoneBox.addEventListener('drop', handleGlobalDrop);
         }
 
         if (folderInput) {
@@ -1611,84 +1619,52 @@
 
         // 统一的数据传输文件/文件夹提取函数 (全平台/浏览器兼容)
         async function getFilesFromDataTransfer(dt) {
-            const files = [];
+            if (!dt) return [];
 
-            // 1. 优先使用现代 File System Access API (getAsFileSystemHandle)
-            // 在 Chrome / Edge 环境下对直接拖拽整个文件夹提供最稳固、无阻断的原生解析能力
-            let usedFileSystemHandle = false;
-            if (dt.items && dt.items.length > 0 && typeof dt.items[0].getAsFileSystemHandle === 'function') {
-                try {
-                    const itemArray = Array.from(dt.items);
-                    for (const item of itemArray) {
-                        if (item.kind !== 'file') continue;
-                        const handle = await item.getAsFileSystemHandle();
-                        if (!handle) continue;
+            // ⚠️ 极其关键：必须在任何 await 之前【同步】提取 dt.files 和 entries！
+            // Chromium 规范规定：一旦事件处理让出当前事件循环（await），DataTransfer 会立刻被浏览器安全机制清空！
+            const fallbackFiles = dt.files ? Array.from(dt.files) : [];
+            const entries = [];
 
-                        usedFileSystemHandle = true;
-                        if (handle.kind === 'file') {
-                            const file = await handle.getFile();
-                            files.push(file);
-                        } else if (handle.kind === 'directory') {
-                            await readDirectoryHandle(handle, handle.name);
-                        }
-                    }
-                } catch (err) {
-                    console.warn('getAsFileSystemHandle fallback to webkitGetAsEntry:', err);
-                    usedFileSystemHandle = false;
-                }
-            }
-
-            async function readDirectoryHandle(dirHandle, path = '') {
-                for await (const entry of dirHandle.values()) {
-                    if (entry.kind === 'file') {
-                        const file = await entry.getFile();
-                        const relPath = path ? `${path}/${file.name}` : file.name;
-                        try {
-                            Object.defineProperty(file, 'webkitRelativePath', {
-                                value: relPath,
-                                configurable: true
-                            });
-                        } catch (e) {}
-                        files.push(file);
-                    } else if (entry.kind === 'directory') {
-                        await readDirectoryHandle(entry, path ? `${path}/${entry.name}` : entry.name);
-                    }
-                }
-            }
-
-            if (usedFileSystemHandle && files.length > 0) {
-                return files;
-            }
-
-            // 2. 经典回退方案：webkitGetAsEntry / FileSystem API (完整分页读取文件夹)
             if (dt.items && dt.items.length > 0) {
-                const entries = [];
                 for (let i = 0; i < dt.items.length; i++) {
                     const item = dt.items[i];
-                    if (item.kind !== 'file') continue;
-                    if (typeof item.webkitGetAsEntry === 'function') {
-                        const entry = item.webkitGetAsEntry();
-                        if (entry) entries.push(entry);
-                    } else if (typeof item.getAsFile === 'function') {
-                        const f = item.getAsFile();
-                        if (f) files.push(f);
+                    if (item && item.kind === 'file') {
+                        if (typeof item.webkitGetAsEntry === 'function') {
+                            try {
+                                const entry = item.webkitGetAsEntry();
+                                if (entry) entries.push(entry);
+                            } catch (err) {
+                                console.warn('webkitGetAsEntry error:', err);
+                            }
+                        } else if (typeof item.getAsFile === 'function') {
+                            try {
+                                const f = item.getAsFile();
+                                if (f) fallbackFiles.push(f);
+                            } catch (err) {}
+                        }
                     }
                 }
+            }
 
-                if (entries.length > 0) {
+            // 1. 如果成功提取到 FileSystem entries (无论是单个文件还是整套文件夹深度递归)
+            if (entries.length > 0) {
+                try {
                     const entryFiles = await scanFileSystemEntries(entries);
                     if (entryFiles && entryFiles.length > 0) {
-                        return files.concat(entryFiles);
+                        return entryFiles;
                     }
+                } catch (err) {
+                    console.warn('scanFileSystemEntries error:', err);
                 }
             }
 
-            // 3. 基础兜底方案：传统 dt.files
-            if (files.length === 0 && dt.files && dt.files.length > 0) {
-                return Array.from(dt.files);
+            // 2. 兜底保障：若 entries 未能提取出有效文件，直接返回同步抓取的 fallbackFiles
+            if (fallbackFiles.length > 0) {
+                return fallbackFiles;
             }
 
-            return files;
+            return [];
         }
 
         async function scanFileSystemEntries(entries) {
@@ -1763,7 +1739,7 @@
                 const path = file.webkitRelativePath || file.name;
                 const fileName = path.split(/[\/\\]/).pop();
                 
-                if (!/\.(png|jpe?g|webp|bmp)$/i.test(fileName)) continue;
+                if (!/\.(png|jpe?g|webp|bmp|avif|tiff?|gif)$/i.test(fileName)) continue;
 
                 const parsed = parseCarFilename(fileName);
                 if (!parsed) continue;
@@ -1794,7 +1770,7 @@
 
             const modelKeys = Object.keys(models);
             if (modelKeys.length === 0) {
-                showToast("No valid car rendering files recognized.");
+                showToast(currentLang === 'zh' ? '未能在拖入的内容中识别到有效图片素材' : 'No valid car rendering files recognized.');
                 return;
             }
 
