@@ -37,6 +37,7 @@
     </script>
     <link rel="icon" type="image/png" href="images/favicon.jpg">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="page-transitions.js"></script>
     <style>
         :root {
             --bg-color: #050505;
@@ -535,18 +536,23 @@
             align-items: center;
             gap: 6px;
             cursor: pointer;
-            transition: all 0.22s;
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
             text-align: center;
         }
         .swatch-tile:hover {
             background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.35);
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+        }
+        .swatch-tile:active {
+            transform: translateY(0) scale(0.95);
+            transition-duration: 0.1s;
         }
         .swatch-tile.active {
             background: rgba(255, 255, 255, 0.12);
             border: 1.5px solid #ffffff;
-            box-shadow: 0 0 12px rgba(255,255,255,0.2);
+            box-shadow: 0 0 14px rgba(255,255,255,0.25), 0 4px 12px rgba(0,0,0,0.5);
         }
         .swatch-rect {
             width: 100%;
@@ -712,6 +718,11 @@
         #poster-canvas { display: none; }
 
         /* Dropzone Styles */
+        @keyframes dropzoneFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
         .dropzone-box {
             width: 100%;
             max-width: 600px;
@@ -724,13 +735,33 @@
             justify-content: center;
             text-align: center;
             cursor: pointer;
-            transition: all 0.3s;
+            animation: dropzoneFloat 5s ease-in-out infinite;
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, background-color 0.3s ease, box-shadow 0.35s ease;
             background: rgba(255,255,255,0.01);
             padding: 40px;
         }
         .dropzone-box:hover, .dropzone-box.dragover {
+            transform: translateY(-8px) scale(1.01);
             border-color: var(--accent-color);
-            background: rgba(0, 229, 204, 0.05);
+            background: rgba(0, 229, 204, 0.06);
+            box-shadow: 0 20px 60px rgba(0, 229, 204, 0.12);
+        }
+        .dropzone-box:active {
+            transform: translateY(-3px) scale(0.99);
+        }
+
+        @keyframes configStageEnter {
+            from {
+                opacity: 0;
+                transform: scale(0.985);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        #configurator-section.active-stage {
+            animation: configStageEnter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
         }
 
         /* 顶部多车型切换胶囊栏 */
@@ -1492,39 +1523,70 @@
         }
 
         // ==========================================
-        // 拖拽与本地文件夹读取引擎
+        // 拖拽与本地文件夹读取引擎 (支持拖拽整个文件夹、多层子目录及单图混合)
         // ==========================================
         window.addEventListener('dragover', (e) => {
             e.preventDefault();
+            e.stopPropagation();
+        });
+        window.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
         });
         window.addEventListener('drop', async (e) => {
             e.preventDefault();
+            e.stopPropagation();
+            if (dropzoneBox) dropzoneBox.classList.remove('dragover');
+
             const dt = e.dataTransfer;
             if (!dt) return;
 
             const isAlreadyActive = configuratorSection.style.display !== 'none';
+
+            // 提示正在扫描
+            const dropTitle = dropzoneBox ? dropzoneBox.querySelector('h2') : null;
+            const originalTitle = dropTitle ? dropTitle.innerText : '';
+            if (dropTitle && !isAlreadyActive) {
+                dropTitle.innerText = currentLang === 'zh' ? '正在扫描并解析文件夹...' : 'Scanning folder...';
+            }
+
             let files = [];
-            if (dt.items && dt.items.length > 0) {
-                files = await scanDataTransferItems(dt.items);
-            } else if (dt.files && dt.files.length > 0) {
-                files = dt.files;
+            try {
+                files = await getFilesFromDataTransfer(dt);
+            } catch (err) {
+                console.error('Error reading dropped folder:', err);
+            }
+
+            if (dropTitle && !isAlreadyActive) {
+                dropTitle.innerText = originalTitle;
             }
 
             if (files && files.length > 0) {
                 handleFiles(files, isAlreadyActive);
+            } else {
+                showToast(currentLang === 'zh' ? '未能在该文件夹中识别到有效图片' : 'No valid car rendering files recognized.');
             }
         });
 
         if (dropzoneBox) {
             dropzoneBox.addEventListener('dragover', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
+                dropzoneBox.classList.add('dragover');
+            });
+            dropzoneBox.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 dropzoneBox.classList.add('dragover');
             });
             dropzoneBox.addEventListener('dragleave', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 dropzoneBox.classList.remove('dragover');
             });
             dropzoneBox.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 dropzoneBox.classList.remove('dragover');
             });
         }
@@ -1547,36 +1609,138 @@
             });
         }
 
-        async function scanDataTransferItems(items) {
+        // 统一的数据传输文件/文件夹提取函数 (全平台/浏览器兼容)
+        async function getFilesFromDataTransfer(dt) {
             const files = [];
-            const queue = [];
 
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                if (typeof item.webkitGetAsEntry === 'function') {
-                    const entry = item.webkitGetAsEntry();
-                    if (entry) queue.push(entry);
-                } else if (typeof item.getAsFile === 'function') {
-                    const f = item.getAsFile();
-                    if (f) files.push(f);
+            // 1. 优先使用现代 File System Access API (getAsFileSystemHandle)
+            // 在 Chrome / Edge 环境下对直接拖拽整个文件夹提供最稳固、无阻断的原生解析能力
+            let usedFileSystemHandle = false;
+            if (dt.items && dt.items.length > 0 && typeof dt.items[0].getAsFileSystemHandle === 'function') {
+                try {
+                    const itemArray = Array.from(dt.items);
+                    for (const item of itemArray) {
+                        if (item.kind !== 'file') continue;
+                        const handle = await item.getAsFileSystemHandle();
+                        if (!handle) continue;
+
+                        usedFileSystemHandle = true;
+                        if (handle.kind === 'file') {
+                            const file = await handle.getFile();
+                            files.push(file);
+                        } else if (handle.kind === 'directory') {
+                            await readDirectoryHandle(handle, handle.name);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('getAsFileSystemHandle fallback to webkitGetAsEntry:', err);
+                    usedFileSystemHandle = false;
                 }
             }
 
+            async function readDirectoryHandle(dirHandle, path = '') {
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file') {
+                        const file = await entry.getFile();
+                        const relPath = path ? `${path}/${file.name}` : file.name;
+                        try {
+                            Object.defineProperty(file, 'webkitRelativePath', {
+                                value: relPath,
+                                configurable: true
+                            });
+                        } catch (e) {}
+                        files.push(file);
+                    } else if (entry.kind === 'directory') {
+                        await readDirectoryHandle(entry, path ? `${path}/${entry.name}` : entry.name);
+                    }
+                }
+            }
+
+            if (usedFileSystemHandle && files.length > 0) {
+                return files;
+            }
+
+            // 2. 经典回退方案：webkitGetAsEntry / FileSystem API (完整分页读取文件夹)
+            if (dt.items && dt.items.length > 0) {
+                const entries = [];
+                for (let i = 0; i < dt.items.length; i++) {
+                    const item = dt.items[i];
+                    if (item.kind !== 'file') continue;
+                    if (typeof item.webkitGetAsEntry === 'function') {
+                        const entry = item.webkitGetAsEntry();
+                        if (entry) entries.push(entry);
+                    } else if (typeof item.getAsFile === 'function') {
+                        const f = item.getAsFile();
+                        if (f) files.push(f);
+                    }
+                }
+
+                if (entries.length > 0) {
+                    const entryFiles = await scanFileSystemEntries(entries);
+                    if (entryFiles && entryFiles.length > 0) {
+                        return files.concat(entryFiles);
+                    }
+                }
+            }
+
+            // 3. 基础兜底方案：传统 dt.files
+            if (files.length === 0 && dt.files && dt.files.length > 0) {
+                return Array.from(dt.files);
+            }
+
+            return files;
+        }
+
+        async function scanFileSystemEntries(entries) {
+            const files = [];
+            const queue = [...entries];
+
             while (queue.length > 0) {
                 const entry = queue.shift();
+                if (!entry) continue;
+
                 if (entry.isFile) {
-                    const f = await new Promise(resolve => entry.file(resolve, () => resolve(null)));
-                    if (f) files.push(f);
-                } else if (entry.isDirectory) {
-                    const dirReader = entry.createReader();
-                    const readEntries = async () => {
-                        const entries = await new Promise(resolve => dirReader.readEntries(resolve, () => resolve([])));
-                        if (entries && entries.length > 0) {
-                            for (const child of entries) queue.push(child);
-                            await readEntries();
+                    try {
+                        const file = await new Promise((resolve, reject) => {
+                            entry.file(resolve, reject);
+                        });
+                        if (file) {
+                            if (entry.fullPath) {
+                                try {
+                                    Object.defineProperty(file, 'webkitRelativePath', {
+                                        value: entry.fullPath.replace(/^\//, ''),
+                                        configurable: true
+                                    });
+                                } catch (e) {}
+                            }
+                            files.push(file);
                         }
-                    };
-                    await readEntries();
+                    } catch (e) {
+                        console.warn('Error reading file entry:', e);
+                    }
+                } else if (entry.isDirectory) {
+                    try {
+                        const dirReader = entry.createReader();
+                        let dirEntries = [];
+                        let batch;
+                        do {
+                            batch = await new Promise((resolve, reject) => {
+                                dirReader.readEntries(resolve, (err) => {
+                                    console.warn('readEntries error:', err);
+                                    resolve([]);
+                                });
+                            });
+                            if (batch && batch.length > 0) {
+                                dirEntries = dirEntries.concat(batch);
+                            }
+                        } while (batch && batch.length > 0);
+
+                        for (const child of dirEntries) {
+                            queue.push(child);
+                        }
+                    } catch (e) {
+                        console.warn('Error reading directory entries:', e);
+                    }
                 }
             }
 
@@ -1676,6 +1840,7 @@
 
             dropzoneSection.style.display = 'none';
             configuratorSection.style.display = 'block';
+            configuratorSection.classList.add('active-stage');
 
             // 显示模式选择器
             const modeSelector = document.getElementById('view-mode-selector');

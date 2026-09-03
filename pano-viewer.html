@@ -20,6 +20,7 @@
     
     <!-- Three.js Library for local WebGL 360 Sphere rendering -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="page-transitions.js"></script>
 
     <style>
         :root {
@@ -487,14 +488,22 @@
         /* 初始居中空状态引导 (Empty State Guide) */
         .empty-stage-guide {
             position: absolute;
-            inset: 0;
+            top: calc(-1 * var(--header-h));
+            left: 0;
+            right: 0;
+            bottom: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 15;
             pointer-events: none;
-            transition: opacity 0.35s ease;
+            transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         }
+        @keyframes emptyFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
         .empty-guide-box {
             background: rgba(14, 14, 18, 0.90);
             backdrop-filter: blur(24px);
@@ -509,7 +518,13 @@
             align-items: center;
             gap: 18px;
             pointer-events: auto;
+            animation: emptyFloat 5s ease-in-out infinite;
+            transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease, box-shadow 0.35s ease;
             box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+        }
+        .empty-guide-box:hover {
+            border-color: rgba(0, 229, 204, 0.45);
+            box-shadow: 0 24px 64px rgba(0,0,0,0.85), 0 0 35px rgba(0, 229, 204, 0.12);
         }
         .empty-icon-circle {
             width: 64px;
@@ -571,6 +586,7 @@
         .empty-stage-guide.hidden {
             opacity: 0;
             pointer-events: none;
+            transform: scale(0.96);
             display: none !important;
         }
 
@@ -594,6 +610,14 @@
             max-width: 90vw;
             overflow-x: auto;
             scrollbar-width: none;
+            transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s;
+        }
+        .bottom-cockpit-bar.hidden {
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+            transform: translateX(-50%) translateY(24px) !important;
         }
         .bottom-cockpit-bar::-webkit-scrollbar { display: none; }
 
@@ -613,13 +637,18 @@
             padding: 6px 12px;
             border-radius: 16px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             white-space: nowrap;
         }
         .preset-pill:hover {
             background: rgba(255, 255, 255, 0.12);
             color: white;
             border-color: rgba(255, 255, 255, 0.25);
+            transform: translateY(-1px);
+        }
+        .preset-pill:active {
+            transform: translateY(0) scale(0.94);
+            transition-duration: 0.1s;
         }
         .preset-pill.active {
             background: rgba(255, 255, 255, 0.2);
@@ -655,11 +684,15 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
         }
         .fov-btn:hover {
             background: rgba(255, 255, 255, 0.15);
             border-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.08);
+        }
+        .fov-btn:active {
+            transform: scale(0.92);
         }
         .fov-value {
             min-width: 44px;
@@ -673,7 +706,7 @@
             position: absolute;
             bottom: 84px;
             left: 50%;
-            transform: translateX(-50%) translateY(10px);
+            transform: translateX(-50%) translateY(14px) scale(0.96);
             background: rgba(14, 14, 18, 0.94);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -682,17 +715,20 @@
             padding: 16px 20px;
             z-index: 30;
             box-shadow: 0 16px 40px rgba(0,0,0,0.7);
-            display: none;
+            display: flex;
             flex-direction: column;
             gap: 12px;
             min-width: 280px;
             opacity: 0;
-            transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s;
         }
         .tone-popover.active {
-            display: flex;
             opacity: 1;
-            transform: translateX(-50%) translateY(0);
+            visibility: visible;
+            pointer-events: auto;
+            transform: translateX(-50%) translateY(0) scale(1);
         }
         .tone-header {
             display: flex;
@@ -888,7 +924,14 @@
             z-index: 20;
             box-shadow: 0 4px 16px rgba(0,0,0,0.5);
             cursor: pointer;
-            transition: all 0.2s;
+            transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s, background 0.2s, border-color 0.2s;
+        }
+        .compass-widget.hidden {
+            display: none !important;
+            opacity: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+            transform: scale(0.7) !important;
         }
         .compass-widget:hover {
             border-color: rgba(255,255,255,0.3);
@@ -1204,7 +1247,7 @@
         </div>
 
         <!-- 底部主控操作岛 (Cockpit Island) -->
-        <div class="bottom-cockpit-bar">
+        <div class="bottom-cockpit-bar hidden" id="bottom-cockpit-bar" style="display: none;">
             <!-- 视角快速预设 -->
             <div class="preset-group">
                 <button class="preset-pill active" onclick="setCameraView(180, 0, 75, this)" data-i18n="view_center">Center</button>
@@ -1304,7 +1347,7 @@
         </div>
 
         <!-- 罗盘方向指针 -->
-        <div class="compass-widget" onclick="resetHeading()" title="Reset Heading to North (0°)">
+        <div class="compass-widget hidden" id="compass-widget" style="display: none;" onclick="resetHeading()" title="Reset Heading to North (0°)">
             <div class="compass-dial" id="compass-dial">
                 <div class="compass-needle"></div>
                 <div class="compass-needle south"></div>
@@ -1738,6 +1781,43 @@
                 document.getElementById('card-meta-b').textContent = (currentLang === 'zh' ? '点击载入对比图' : 'Click to load image');
                 document.getElementById('badge-name-b').textContent = (currentLang === 'zh' ? '未载入' : 'Empty');
                 document.getElementById('btn-upload-b').textContent = (currentLang === 'zh' ? '载入' : 'Load');
+            }
+
+            // 底部主控操作岛与指南针罗盘可见性控制 (未加载全景图时保持隐藏，拖入/载入后显现)
+            const emptyGuide = document.getElementById('empty-guide');
+            const bottomBar = document.getElementById('bottom-cockpit-bar');
+            const compassWidget = document.getElementById('compass-widget');
+
+            if (emptyGuide) {
+                if (hasImage) {
+                    emptyGuide.classList.add('hidden');
+                    emptyGuide.style.display = 'none';
+                } else {
+                    emptyGuide.style.display = 'flex';
+                    emptyGuide.classList.remove('hidden');
+                }
+            }
+
+            if (bottomBar) {
+                if (hasImage) {
+                    bottomBar.style.display = 'flex';
+                    void bottomBar.offsetWidth;
+                    bottomBar.classList.remove('hidden');
+                } else {
+                    bottomBar.classList.add('hidden');
+                    bottomBar.style.display = 'none';
+                }
+            }
+
+            if (compassWidget) {
+                if (hasImage) {
+                    compassWidget.style.display = 'flex';
+                    void compassWidget.offsetWidth;
+                    compassWidget.classList.remove('hidden');
+                } else {
+                    compassWidget.classList.add('hidden');
+                    compassWidget.style.display = 'none';
+                }
             }
         }
 

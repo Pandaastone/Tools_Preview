@@ -64,6 +64,7 @@ const translations = {
         'bc_wm_text': 'Text Watermark',
         'bc_wm_image': 'Image / Logo',
         'bc_wm_text_input': 'Watermark Text',
+        'bc_wm_placeholder': 'Enter watermark text...',
         'bc_wm_size': 'Size',
         'bc_wm_opacity': 'Opacity',
         'bc_wm_rotation': 'Rotation Angle',
@@ -477,6 +478,7 @@ const translations = {
         'bc_wm_text': '文字水印',
         'bc_wm_image': '图章 Logo 水印',
         'bc_wm_text_input': '水印文字内容',
+        'bc_wm_placeholder': '输入水印文字内容...',
         'bc_wm_size': '水印尺寸',
         'bc_wm_opacity': '不透明度',
         'bc_wm_rotation': '旋转角度',
@@ -838,6 +840,14 @@ function applyLanguage(lang) {
         const key = el.getAttribute('data-i18n');
         if (translations[lang] && translations[lang][key] !== undefined) {
             el.innerHTML = translations[lang][key]; // 使用 innerHTML 支持 <br> 换行
+        }
+    });
+
+    // 替换所有带有 data-i18n-placeholder 属性的占位符
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (translations[lang] && translations[lang][key] !== undefined) {
+            el.placeholder = translations[lang][key];
         }
     });
 
