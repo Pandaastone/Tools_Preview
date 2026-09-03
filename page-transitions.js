@@ -41,10 +41,14 @@
         const anchor = e.target.closest('a');
         if (!anchor) return;
         const href = anchor.getAttribute('href');
-        if (!href || href.startsWith('#') || href.startsWith('javascript:') || anchor.target === '_blank') return;
+        if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:') || anchor.target === '_blank') return;
 
-        // 仅拦截本站本地 HTML 页面跳转
-        if (href.endsWith('.html') || href === 'index.html' || href === 'tools.html') {
+        // 排除外链
+        const isExternal = anchor.hostname && anchor.hostname !== window.location.hostname;
+        if (isExternal) return;
+
+        // 拦截本站内部页面跳转（如 /、/batch-cropper/、/configurator-auto/、/pano-viewer/、/tools/ 或兼容旧链接）
+        if (href.startsWith('/') || href.endsWith('/') || href.endsWith('.html') || href === 'index.html' || href === 'tools.html') {
             e.preventDefault();
             document.body.classList.add('page-leaving');
             setTimeout(() => {
